@@ -17,8 +17,8 @@
           <select id="numbers"></select>
         </fieldset>
         <div class="mar-l-md">
-          <button id="gotoFirst" ord="secondary" disabled>Top</button>
-          <button id="gotoLast" ord="secondary" disabled>Bottom</button>
+          <button id="scrollToTop" ord="secondary" disabled>Top</button>
+          <button id="scrollToBottom" ord="secondary" disabled>Bottom</button>
         </div>
       </div>
       <div id="errorMessage" hidden>
@@ -29,30 +29,57 @@
       </div>
     </div>
     <m-loader id="loader" loading>Summoning Pokemon...</m-loader>
-    <ul id="pokemonList" type="content" class="overflow-auto" style="height: 500px">
+    <ul id="pokemonList" type="content" class="overflow-auto" style="height: 450px">
     </ul>
   </m-box>
   <output id="debug" class="block pad-t-sm pad-l-xs" style="width: 160px"></output>
 </m-container>
 
 <script type="module">
+  // Develop an Infinite scroll list.
+  // - ✅ Utilize PokeAPI for fetching data (https://pokeapi.co/api/v2/pokemon?offset=0&limit=10).
+  // - ✅ The list should show 10 Pokémon names initially and it should dynamically load more items when the user scrolls up or down.
+  // - Ensure the list maintains only "n" items at any given time (remove old items from DOM which are not in viewport).
+  // - ✅ Implement loading indicator
+  // - ✅ Implement mechanisms to handle api errors and retry on network errors.
+  // - ✅ Add an option to quickly jump to the top or bottom of the list.
+  // - ✅ Include an option for navigating to a specific item by number.
+  // (optional if time permits):
+  //   - Introduce an automatic scrolling feature (play button).
+  //   - Allow users to pause and resume auto-scrolling.
+
+  /**
+   * Access any element with an id as a property of the returned object.
+   * @type {Object.<HTMLElement.id, HTMLElement>}
+   */
+  const elements = new Proxy({}, {
+    get(target, elementId) {
+      if (!target[elementId]) target[elementId] = document.getElementById(elementId);
+      return target[elementId];
+    }
+  })
+
   /**
    * Element to observe when getting close to end of list.
    */
-  let endMarker;
+  let scrollTarget;
 
   /**
    * Updates the list of Pokemon.
    */
   function updatePokemonList() {
-    if (endMarker) {
-      observer.unobserve(endMarker);
-      endMarker.removeAttribute('data-end');
+    // List is about to grow, so target needs to be moved further down the list
+    if (scrollTarget) {
+      observer.unobserve(scrollTarget);
+      scrollTarget.removeAttribute('data-end');
     }
 
+    // Document fragment for performance since we could be dealing with a lot of elements
     const frag = document.createDocumentFragment();
     const start = elements.pokemonList.children.length;
     const end = start + 100;
+
+    // Get the next slice of pokemon to render
     pokemon.slice(start, end).forEach((character, i) => {
       const li = document.createElement('li');
       li.classList.add('pad-sm');
@@ -66,8 +93,6 @@
       li.append(span, a);
       frag.append(li)
     })
-
-    // Document fragment for performance since we could be dealing with a lot of elements
     elements.pokemonList.append(...frag.children)
 
     // Update debug info
@@ -77,12 +102,10 @@
       <div class="flex justify-content-between fnt-mono">Pokemon in DOM: <div>${elements.pokemonList.children.length}</div></div>
     `;
 
-    // Reset end target
+    // Observe a new scroll target toward end of list
     if (elements.pokemonList.children.length < totalPokemon) {
-      endMarker = [...elements.pokemonList.children].at(-20);
-      endMarker.setAttribute('data-end', 'true');
-      endMarker.append('END');
-      endMarker && observer.observe(endMarker);
+      scrollTarget = [...elements.pokemonList.children].at(-20);
+      scrollTarget && observer.observe(scrollTarget);
     }
   }
 
@@ -97,17 +120,6 @@
    * Pokemon Cache.
    */
   const cache = await caches.open('pokemon');
-
-  /**
-   * Access any element with an id as a property of the returned object.
-   * @type {Object.<HTMLElement.id, HTMLElement>}
-   */
-  const elements = new Proxy({}, {
-    get(target, elementId) {
-      if (!target[elementId]) target[elementId] = document.getElementById(elementId);
-      return target[elementId];
-    }
-  })
 
   /**
    * A Pokemon character.
@@ -152,15 +164,16 @@
     }
   }
 
-  // Initial setup...
-
-  // Create observer for infinite scroll (scroll event is an inefficient solution)
+  /**
+   * This observer watches for a "target" Pokemon element near the end of the Pokemon list.
+   * When the target intersects (i.e. it has come into view), the observer will
+   * fetch more Pokemon if needed and do so with enough buffer to avoid interrupting the scroll experience.
+   */
   const observer = new IntersectionObserver(async entries => {
-    const isEndMarker = entries[0].target.hasAttribute('data-end');
     const enteringView = entries[0].isIntersecting;
     const atBottomEdge = entries[0].boundingClientRect.top > entries[0].rootBounds.top;
-    if (isEndMarker && enteringView && atBottomEdge) {
-      console.log('end marker entered at bottom')
+    if (enteringView && atBottomEdge) {
+      console.log('Scroll target entered at bottom, get more Pokemon...')
       const needsMorePokemon = elements.pokemonList.children.length === pokemon.length && pokemon.length < totalPokemon;
       if (needsMorePokemon) {
         const {results} = await fetchPokemon();
@@ -171,46 +184,51 @@
     }
   }, {root: elements.pokemonList});
 
-  // Total Pokemon available from API.
+  /**
+   * Total number of Pokemon available from API.
+   */
   let totalPokemon;
 
   /** @type Pokemon[] */
   const pokemon = [];
 
-  // Try cached Pokemon
-  const responses = await cache.matchAll();
-  if (responses.length) {
-    for (const res of responses) {
-      const json = await res.json();
+  /**
+   * Set up Pokemon, render initial list, enable toolbar.
+   * @return {Promise<void>}
+   */
+  async function init() {
+    // Try cached Pokemon
+    const responses = await cache.matchAll();
+    if (responses.length) {
+      for (const res of responses) {
+        const json = await res.json();
+        totalPokemon = json.count;
+        pokemon.push(...json.results)
+      }
+    }
+    // Or fetch initial Pokemon
+    else {
+      const json = await fetchPokemon();
       totalPokemon = json.count;
       pokemon.push(...json.results)
     }
+
+    // Render initial list of Pokemon
+    elements.loader.hidden = true;
+    updatePokemonList();
+
+    // Initialize toolbar buttons
+    updateNumberSelect();
+    const options = {block: 'start', behavior: 'smooth'};
+    elements.numbers.addEventListener('change', e => elements.pokemonList.children[e.target.value].scrollIntoView(options));
+    elements.scrollToTop.addEventListener('click', e => elements.pokemonList.firstElementChild.scrollIntoView(options));
+    elements.scrollToTop.disabled = false;
+    elements.scrollToBottom.addEventListener('click', e => elements.pokemonList.lastElementChild.scrollIntoView(options));
+    elements.scrollToBottom.disabled = false;
+    elements.tryAgain.addEventListener('click', e => console.log('Try fetch again...'));
   }
-  // Or fetch initial Pokemon
-  else {
-    const json = await fetchPokemon();
-    pokemon.push(...json.results)
-  }
 
-  // Render initial list of Pokemon
-  elements.loader.hidden = true;
-  updatePokemonList();
-
-  // Enable buttons
-  const options = {block: 'center', behavior: 'smooth'};
-  elements.gotoFirst.addEventListener('click', e => elements.pokemonList.firstElementChild.scrollIntoView(options))
-  elements.gotoFirst.disabled = false;
-  elements.gotoLast.addEventListener('click', e => elements.pokemonList.lastElementChild.scrollIntoView(options))
-  elements.gotoLast.disabled = false;
-
-  // Initialize number select
-  updateNumberSelect();
-  elements.numbers.addEventListener('change', e => {
-    elements.pokemonList.children[e.target.value].scrollIntoView({block: 'start', behavior: 'smooth'})
-  })
-
-  // Try again button
-  elements.tryAgain.addEventListener('click', e => console.log('Try fetch again...'))
+  init();
 </script>
 </body>
 </html>
