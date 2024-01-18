@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>PokeScroll</title>
+  <link href="https://unpkg.com/m-@3.2.0/dist/m-.woff2" rel="preload" as="font" crossorigin>
+  <link href="https://unpkg.com/m-@3.2.0/dist/m-.css" rel="stylesheet">
+  <script src="https://unpkg.com/m-@3.2.0/dist/m-.js" defer></script>
+</head>
+<body class="bg-gray-1">
+<m-container>
+  <h1 class="txt-center">Pokemon Infinite Scroll</h1>
+  <m-box>
+    <div role="toolbar" class="flex align-items-center justify-content-between pad-b-sm brd-b">
+      <div class="flex align-items-center">
+        <div class="txt-md fnt-med mar-r-sm">Scroll to</div>
+        <fieldset>
+          <select id="numbers"></select>
+        </fieldset>
+        <div class="mar-l-md">
+          <button id="gotoFirst" ord="secondary" disabled>Top</button>
+          <button id="gotoLast" ord="secondary" disabled>Bottom</button>
+        </div>
+      </div>
+      <div id="errorMessage" hidden>
+        <span class="txt-error">Failed to retrieve Pokemon.</span>
+        <button id="tryAgain" class="all-unset inline-flex align-items-center pointer">
+          Try again <m-icon name="refresh"></m-icon>
+        </button>
+      </div>
+    </div>
+    <m-loader id="loader" loading>Summoning Pokemon...</m-loader>
+    <ul id="pokemonList" type="content" class="overflow-auto" style="height: 500px">
+    </ul>
+  </m-box>
+  <output id="debug" class="block pad-t-sm pad-l-xs" style="width: 160px"></output>
+</m-container>
+
+<script type="module">
+  /**
+   * Element to observe when getting close to end of list.
+   */
+  let endMarker;
+
+  /**
+   * Updates the list of Pokemon.
+   */
+  function updatePokemonList() {
+    if (endMarker) {
+      observer.unobserve(endMarker);
+      endMarker.removeAttribute('data-end');
+    }
+
+    const frag = document.createDocumentFragment();
+    const start = elements.pokemonList.children.length;
+    const end = start + 100;
+    pokemon.slice(start, end).forEach((character, i) => {
+      const li = document.createElement('li');
+      li.classList.add('pad-sm');
+      const span = document.createElement('span');
+      span.classList.add('txt-xs', 'txt-gray-4', 'mar-r-sm');
+      span.textContent = `${start + i + 1}`;
+      const a = document.createElement('a');
+      a.classList.add('inline-block', 'txt-caps');
+      a.href = character.url;
+      a.textContent = character.name;
+      li.append(span, a);
+      frag.append(li)
+    })
+
+    // Document fragment for performance since we could be dealing with a lot of elements
+    elements.pokemonList.append(...frag.children)
+
+    // Update debug info
+    elements.debug.innerHTML = `
+      <div class="flex justify-content-between fnt-mono">Total Pokemon: <div>${totalPokemon}</div></div>
+      <div class="flex justify-content-between fnt-mono">Cached Pokemon: <div>${pokemon.length}</div></div>
+      <div class="flex justify-content-between fnt-mono">Pokemon in DOM: <div>${elements.pokemonList.children.length}</div></div>
+    `;
+
+    // Reset end target
+    if (elements.pokemonList.children.length < totalPokemon) {
+      endMarker = [...elements.pokemonList.children].at(-20);
+      endMarker.setAttribute('data-end', 'true');
+      endMarker.append('END');
+      endMarker && observer.observe(endMarker);
+    }
+  }
+
+  /**
+   * Updates the number select options.
+   */
+  function updateNumberSelect() {
+    elements.numbers.innerHTML = pokemon.reduce((acc, _, i) => `${acc}<option value="${i}">${i+1}</option>`, '')
+  }
+
+  /**
+   * Pokemon Cache.
+   */
+  const cache = await caches.open('pokemon');
+
+  /**
+   * Access any element with an id as a property of the returned object.
+   * @type {Object.<HTMLElement.id, HTMLElement>}
+   */
+  const elements = new Proxy({}, {
+    get(target, elementId) {
+      if (!target[elementId]) target[elementId] = document.getElementById(elementId);
+      return target[elementId];
+    }
+  })
+
+  /**
+   * A Pokemon character.
+   * @typedef {object} Pokemon
+   * @property {string} name - The Pokemon's name.
+   * @property {string} url - The URL for this Pokemon.
+   */
+
+  /**
+   * Fetches Pokemon from {@link https://pokeapi.co/docs/v2}. Will retry if there's an error.
+   * @return {Promise<Pokemon[]>}
+   */
+  async function fetchPokemon() {
+    // Fetch
+    try {
+      // To test the retry logic, change the domain with something like "pokeapiasdf"
+      const url = fetchPokemon.nextUrl || `https://pokeapi.co/api/v2/pokemon?offset=${pokemon.length}&limit=100`;
+      await cache.add(url);
+      const res = await cache.match(url);
+      const json = await res.json();
+      totalPokemon = json.count;
+      fetchPokemon.nextUrl = json.next;
+      fetchPokemon.retries = undefined;
+      elements.errorMessage.hidden = true;
+      return json;
+    }
+    // Retry
+    catch (error) {
+      console.error(error)
+      const retryLimit = 2;
+      if (fetchPokemon.retries) fetchPokemon.retries++
+      if (fetchPokemon.retries <= retryLimit || fetchPokemon.retries === undefined) {
+        fetchPokemon.retries = fetchPokemon.retries || 1;
+        console.warn(`Retrying ${fetchPokemon.retries}/${retryLimit}...`);
+        return fetchPokemon();
+      }
+      else {
+        console.warn('Maximum retries attempted.');
+        fetchPokemon.retries = undefined;
+        elements.errorMessage.hidden = false;
+      }
+    }
+  }
+
+  // Initial setup...
+
+  // Create observer for infinite scroll (scroll event is an inefficient solution)
+  const observer = new IntersectionObserver(async entries => {
+    const isEndMarker = entries[0].target.hasAttribute('data-end');
+    const enteringView = entries[0].isIntersecting;
+    const atBottomEdge = entries[0].boundingClientRect.top > entries[0].rootBounds.top;
+    if (isEndMarker && enteringView && atBottomEdge) {
+      console.log('end marker entered at bottom')
+      const needsMorePokemon = elements.pokemonList.children.length === pokemon.length && pokemon.length < totalPokemon;
+      if (needsMorePokemon) {
+        const {results} = await fetchPokemon();
+        pokemon.push(...results);
+        updateNumberSelect();
+      }
+      updatePokemonList();
+    }
+  }, {root: elements.pokemonList});
+
+  // Total Pokemon available from API.
+  let totalPokemon;
+
+  /** @type Pokemon[] */
+  const pokemon = [];
+
+  // Try cached Pokemon
+  const responses = await cache.matchAll();
+  if (responses.length) {
+    for (const res of responses) {
+      const json = await res.json();
+      totalPokemon = json.count;
+      pokemon.push(...json.results)
+    }
+  }
+  // Or fetch initial Pokemon
+  else {
+    const json = await fetchPokemon();
+    pokemon.push(...json.results)
+  }
+
+  // Render initial list of Pokemon
+  elements.loader.hidden = true;
+  updatePokemonList();
+
+  // Enable buttons
+  const options = {block: 'center', behavior: 'smooth'};
+  elements.gotoFirst.addEventListener('click', e => elements.pokemonList.firstElementChild.scrollIntoView(options))
+  elements.gotoFirst.disabled = false;
+  elements.gotoLast.addEventListener('click', e => elements.pokemonList.lastElementChild.scrollIntoView(options))
+  elements.gotoLast.disabled = false;
+
+  // Initialize number select
+  updateNumberSelect();
+  elements.numbers.addEventListener('change', e => {
+    elements.pokemonList.children[e.target.value].scrollIntoView({block: 'start', behavior: 'smooth'})
+  })
+
+  // Try again button
+  elements.tryAgain.addEventListener('click', e => console.log('Try fetch again...'))
+</script>
+</body>
+</html>
