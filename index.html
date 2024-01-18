@@ -8,7 +8,8 @@
 </head>
 <body class="bg-gray-1">
 <m-container>
-  <h1 class="txt-center">Pokemon Infinite Scroll</h1>
+  <h1 class="txt-center mar-b-0">Pokemon Infinite Scroll</h1>
+  <p class="txt-center">Uses Cache API and IntersectionObserver for maximum performance</p>
   <m-box>
     <div role="toolbar" class="flex align-items-center justify-content-between pad-b-sm brd-b">
       <div class="flex align-items-center">
@@ -32,7 +33,10 @@
     <ul id="pokemonList" type="content" class="overflow-auto" style="height: 450px">
     </ul>
   </m-box>
-  <output id="debug" class="block pad-t-sm pad-l-xs" style="width: 160px"></output>
+  <div class="flex justify-content-between pad-t-sm pad-l-xs pad-r-xs">
+    <output id="debug" class="block" style="width: 160px"></output>
+    <a href="https://github.com/jfbrennan/pokescroll/">GitHub</a>
+  </div>
 </m-container>
 
 <script type="module">
