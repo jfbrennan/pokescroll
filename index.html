@@ -7,20 +7,24 @@
   <link href="https://unpkg.com/m-@3.2.0/dist/m-.css" rel="stylesheet">
   <script src="https://unpkg.com/m-@3.2.0/dist/m-.js" defer></script>
 </head>
-<body class="bg-gray-1">
-<m-container maxwidth="md">
+<body class="bg-gray-1" style="height: 100vh">
+<m-container maxwidth="md" class="flex flx-col height-full box-sizing-border">
   <h1 class="txt-center mar-b-0">Pokemon Infinite Scroll</h1>
   <p class="txt-center">Uses Cache API and IntersectionObserver for maximum performance</p>
-  <m-box>
-    <div role="toolbar" class="flex align-items-center justify-content-between pad-b-sm brd-b">
+  <m-box class="flex flx-col height-min-0">
+    <div role="toolbar" class="flex align-items-center justify-content-between pad-b-sm">
       <div class="flex align-items-center">
         <div class="txt-md fnt-med mar-r-sm">Scroll to</div>
         <fieldset>
           <select id="numbers"></select>
         </fieldset>
         <div class="mar-l-md">
-          <button id="scrollToTop" ord="secondary" disabled>Top</button>
-          <button id="scrollToBottom" ord="secondary" disabled>Bottom</button>
+          <button id="scrollToTop" ord="secondary" disabled>
+            <m-icon name="arrow_drop_up"></m-icon>
+          </button>
+          <button id="scrollToBottom" ord="secondary" disabled>
+            <m-icon name="arrow_drop_down"></m-icon>
+          </button>
         </div>
       </div>
       <div id="errorMessage" hidden>
@@ -30,14 +34,14 @@
         </button>
       </div>
     </div>
+    <div class="flex justify-content-between pad-b-sm brd-b">
+      <output id="debug" class="block" style="width: 160px"></output>
+      <a href="https://github.com/jfbrennan/pokescroll/">GitHub</a>
+    </div>
     <m-loader id="loader" loading class="pad-lg">Summoning Pokemon...</m-loader>
-    <ul id="pokemonList" type="content" class="overflow-auto" style="height: 450px">
+    <ul id="pokemonList" type="content" class="overflow-auto">
     </ul>
   </m-box>
-  <div class="flex justify-content-between pad-t-sm pad-l-xs pad-r-xs">
-    <output id="debug" class="block" style="width: 160px"></output>
-    <a href="https://github.com/jfbrennan/pokescroll/">GitHub</a>
-  </div>
 </m-container>
 
 <script type="module">
