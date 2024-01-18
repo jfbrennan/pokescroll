@@ -1,5 +1,5 @@
 # PokeScroll
-Using the [pokeapi](https://pokeapi.co/docs/v2) to experiment with the Cache API and infinite scroll. 
+Using the [PokeAPI](https://pokeapi.co/docs/v2) to experiment with the Cache API and infinite scroll. 
 
 The list of Pokemon are rendered from `CacheStorage`, otherwise the app fetches (and caches) pages of Pokemon as the user scrolls down. If there's any issues fetching, an internal retry mechanism will respond to those errors.
 
