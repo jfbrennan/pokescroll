@@ -68,7 +68,6 @@
     // List is about to grow, so target needs to be moved further down the list
     if (scrollTarget) {
       observer.unobserve(scrollTarget);
-      scrollTarget.removeAttribute('data-end');
     }
 
     // Document fragment for performance since we could be dealing with a lot of elements
